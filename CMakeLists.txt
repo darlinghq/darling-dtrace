@@ -11,7 +11,14 @@ include_directories(BEFORE
 	${CMAKE_CURRENT_SOURCE_DIR}/libelf
 	${CMAKE_CURRENT_SOURCE_DIR}/libdwarf
 	${CMAKE_CURRENT_SOURCE_DIR}/libdwarf/cmplrs
+	${CMAKE_CURRENT_SOURCE_DIR}/libdtrace
 	${CMAKE_CURRENT_SOURCE_DIR}/sys
+	${CMAKE_CURRENT_SOURCE_DIR}/libproc
+	${CMAKE_CURRENT_SOURCE_DIR}/head
+)
+
+add_definitions(
+	-Dyydebug=
 )
 
 add_darling_static_library(ctf FAT
@@ -141,3 +148,72 @@ add_darling_static_library(dwarf FAT
 set_property(TARGET dwarf APPEND_STRING PROPERTY COMPILE_DEFINITIONS
 	"NDEBUG -DNS_BLOCK_ASSERTIONS"
 )
+
+set(DYLIB_INSTALL_NAME "/usr/lib/libdtrace.dylib")
+set(DYLIB_COMPAT_VERSION "1.0.0")
+set(DYLIB_CURRENT_VERSION "130.0.0")
+
+add_darling_library(dtrace
+	libdtrace/dt_provider_apple.c
+	libdtrace/dt_pq.c
+	libdtrace/dt_aggregate.c
+	libdtrace/dt_as.c
+	libdtrace/dt_buf.c
+	libdtrace/dt_cc.c
+	libdtrace/dt_cg.c
+	libdtrace/dt_consume.c
+	libdtrace/dt_decl.c
+	libdtrace/dt_dis.c
+	libdtrace/dt_dof.c
+	libdtrace/dt_error.c
+	libdtrace/dt_errtags.c
+	libdtrace/dt_grammar.y
+	libdtrace/dt_handle.c
+	libdtrace/dt_ident.c
+	libdtrace/dt_inttab.c
+	libdtrace/dt_lex.l
+	libdtrace/dt_link.c
+	libdtrace/dt_list.c
+	libdtrace/dt_map.c
+	libdtrace/dt_isadep_arm.c
+	libdtrace/dt_module.c
+	libdtrace/dt_names.c
+	libdtrace/dt_open.c
+	libdtrace/dt_options.c
+	libdtrace/dt_parser.c
+	libdtrace/dt_pcb.c
+	libdtrace/dt_pragma.c
+	libdtrace/dt_printf.c
+	libdtrace/dt_proc.c
+	libdtrace/dt_program.c
+	libdtrace/dt_provider.c
+	libdtrace/dt_regset.c
+	libdtrace/dt_string.c
+	libdtrace/dt_strtab.c
+	libdtrace/dt_subr.c
+	libdtrace/dt_subr_apple.c
+	libdtrace/dt_sugar.c
+	libdtrace/dt_work.c
+	libdtrace/dt_xlator.c
+	darwin_shim.c
+	libdtrace/dt_pid.c
+	disassembler/dis_tables.c
+	libdtrace/dt_dof_byteswap.c
+	libproc/libproc.c
+	libdtrace/dt_pid_apple.c
+	libdtrace/dt_isadep_x86.c
+	libdtrace/dt_print.c
+	libdtrace/dt_ld.cpp
+	libdtrace/dt_proc_apple.c
+	libdtrace/dt_module_apple.c
+	y.tab.c
+	dt_lex.yy.c
+)
+make_fat(dtrace)
+target_link_libraries(dtrace system cxx CoreFoundation CoreSymbolication)
+
+set_property(TARGET dtrace APPEND_STRING PROPERTY COMPILE_DEFINITIONS
+	"_INT64_TYPE -D_LONGLONG_TYPE -D_ILP32 -DNS_BLOCK_ASSERTIONS -DNDEBUG"
+)
+target_link_libraries(dtrace dwarf elf ctf CoreFoundation CoreSymbolication)
+install(TARGETS dtrace DESTINATION libexec/darling/usr/lib)

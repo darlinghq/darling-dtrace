@@ -57,6 +57,7 @@
 #include <dt_strtab.h>
 #include <dt_module.h>
 #include <dt_impl.h>
+#include <mach/kmod.h>
 
 static const char *dt_module_strtab; /* active strtab for qsort callbacks */
 

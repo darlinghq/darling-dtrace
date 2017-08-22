@@ -49,6 +49,8 @@
 #include <mach-o/stab.h>
 #include <sys/mman.h>
 
+#include <libkern/OSByteOrder.h>
+
 static struct xSectName
 {
 	const char *MachoName;
