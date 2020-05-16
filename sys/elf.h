@@ -262,6 +262,7 @@ typedef struct {
 #define	EM_ARC_A5	93		/* ARC Cores Tangent-A5 */
 #define	EM_XTENSA	94		/* Tensilica Xtensa architecture */
 #define	EM_NUM		95
+#define EM_AARCH64	183
 
 #define	EV_NONE		0		/* e_version, EI_VERSION */
 #define	EV_CURRENT	1
