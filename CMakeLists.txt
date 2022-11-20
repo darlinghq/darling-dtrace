@@ -3,6 +3,7 @@ project(dtrace)
 add_compile_options(
 	-nostdinc
 	-Wno-shift-op-parentheses
+	-Wno-error=int-conversion
 )
 
 include_directories(BEFORE
