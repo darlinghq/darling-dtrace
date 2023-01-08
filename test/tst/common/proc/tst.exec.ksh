@@ -23,8 +23,6 @@
 # Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-#pragma ident	"@(#)tst.exec.ksh	1.1	06/08/28 SMI"
-
 #
 # This script tests that the proc:::exec probe fires, followed by the
 # proc:::exec-success probe (in a successful exec(2)).
@@ -34,45 +32,28 @@
 #
 script()
 {
-if [ -f /usr/lib/dtrace/darwin.d ]; then
 	$dtrace -xstatusrate=200ms -s /dev/stdin <<EOF
+	int pids[int];
+
 	proc:::exec
 	/curpsinfo->pr_ppid == $child && args[0] == "/bin/sleep"/
 	{
-		self->exec = 1;
+		pids[curproc->p_pid] = 1;
+		trace("proc:::exec\n");
 	}
 
 	proc:::exec-success
-	/self->exec/
+	/pids[curproc->p_pid]/
 	{
 		exit(0);
 	}
 EOF
-else
-	$dtrace -s /dev/stdin <<EOF
-	proc:::exec
-	/curpsinfo->pr_ppid == $child && args[0] == "/usr/bin/sleep"/
-	{
-		self->exec = 1;
-	}
-
-	proc:::exec-success
-	/self->exec/
-	{
-		exit(0);
-	}
-EOF
-fi
 }
 
 sleeper()
 {
 	while true; do
-		if [ -f /usr/lib/dtrace/darwin.d ]; then
-			/bin/sleep 1
-		else
-			/usr/bin/sleep 1
-		fi
+		/bin/sleep 1
 	done
 }
 

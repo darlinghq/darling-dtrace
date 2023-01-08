@@ -24,8 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)tst.raise3.c	1.1	06/08/28 SMI"
-
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
@@ -45,9 +43,10 @@ main(int argc, char **argv)
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = 0;
 
-	(void) sigaction(SIGINT, &sa, NULL);
+	(void) sigaction(SIGUSR1, &sa, NULL);
 
 	for (;;) {
 		(void) geteuid();
+		usleep(1000);
 	}
 }

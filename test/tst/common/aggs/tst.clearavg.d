@@ -24,8 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)tst.clearavg.d	1.1	06/08/28 SMI"
-
 
 /*
  * ASSERTION:
@@ -40,15 +38,15 @@
  */
 
 #pragma D option quiet
-#pragma D option statusrate=10ms
+#pragma D option statusrate=50ms
 
-tick-1ms
+tick-10ms
 /i++ < 5/
 {
 	@a = avg(timestamp);
 }
 
-tick-1ms
+tick-10ms
 /i == 5/
 {
 	exit(2);

@@ -1,5 +1,7 @@
-perf/perf.launchtime.ksh
-perf/perf.fbt_probes.ksh
+perf/perf.launchtime.exe
+perf/perf.overhead.exe
+perf/perf.probes.exe
+perf/perf.usdt_overhead.exe
 aggs/err.D_AGG_FUNC.bad.d
 aggs/err.D_AGG_MDIM.bad.d
 aggs/err.D_AGG_NULL.bad.d
@@ -121,6 +123,8 @@ aggs/tst.quantmany.d
 aggs/tst.quantround.d
 aggs/tst.quantzero.d
 aggs/tst.signature.d
+aggs/tst.stddev.d
+aggs/tst.stddev.normalize.d
 aggs/tst.subr.d
 aggs/tst.sum.d
 aggs/tst.trunc.d
@@ -135,7 +139,9 @@ arithmetic/err.D_SYNTAX.divmin.d
 arithmetic/err.D_SYNTAX.muladd.d
 arithmetic/err.D_SYNTAX.muldiv.d
 arithmetic/tst.basics.d
-arithmetic/tst.complex.d
+arithmetic/tst.compcast.d
+arithmetic/tst.compnarrowassign.d
+arithmetic/tst.execcast.d
 arrays/err.D_ARR_BADREF.bad.d
 arrays/err.D_DECL_ARRBIG.toobig.d
 arrays/err.D_DECL_ARRNULL.bad.d
@@ -207,6 +213,8 @@ builtinvar/tst.arg1to8.d
 builtinvar/tst.arg1to8clause.d
 builtinvar/tst.caller.d
 builtinvar/tst.caller1.d
+builtinvar/tst.cpucycles.d
+builtinvar/tst.cpuinstrs.d
 builtinvar/tst.epid.d
 builtinvar/tst.epid1.d
 builtinvar/tst.errno.d
@@ -226,7 +234,11 @@ builtinvar/tst.psinfo1.d
 builtinvar/tst.tid.d
 builtinvar/tst.tid1.d
 builtinvar/tst.timestamp.d
+builtinvar/tst.vcycles.d
+builtinvar/tst.vinstrs.d
 builtinvar/tst.vtimestamp.d
+cg/err.D_NOREG.noreg.d
+cg/err.baddif.d
 clauses/err.D_IDENT_UNDEF.aggfun.d
 clauses/err.D_IDENT_UNDEF.aggtup.d
 clauses/err.D_IDENT_UNDEF.arrtup.d
@@ -274,25 +286,7 @@ drops/drp.DTRACEDROP_PRINCIPAL.d
 drops/drp.DTRACEDROP_PRINCIPAL.end.d
 drops/drp.DTRACEDROP_SPEC.d
 drops/drp.DTRACEDROP_SPECUNAVAIL.d
-# drops/drp.DTRACEDROP_STKSTROVERFLOW.d  		/* DEFERRED: Awaits helper DOF for Java(?) */
 dtraceUtil/err.D_PDESC_ZERO.InvalidDescription1.d
-# dtraceUtil/man.AddSearchPath.d				/* Manual Tests */
-# dtraceUtil/man.APIVersion.d
-# dtraceUtil/man.CoalesceTrace.d
-# dtraceUtil/man.ELFGeneration.d
-# dtraceUtil/man.IncludedFilePath.d
-# dtraceUtil/man.ListProbesWithFunctions
-# dtraceUtil/man.ListProbesWithIDs
-# dtraceUtil/man.ListProbesWithModules
-# dtraceUtil/man.ListProbesWithNames
-# dtraceUtil/man.ListProbesWithProviders
-# dtraceUtil/man.ShowCompilerCode.d
-# dtraceUtil/man.TraceFunctions
-# dtraceUtil/man.TraceIDs
-# dtraceUtil/man.TraceModule
-# dtraceUtil/man.TraceNames
-# dtraceUtil/man.TraceProvider
-# dtraceUtil/man.VerboseStabilityReport.d
 dtraceUtil/tst.AddSearchPath.d.ksh
 dtraceUtil/tst.BufsizeGiga.d.ksh
 dtraceUtil/tst.BufsizeKilo.d.ksh
@@ -307,8 +301,6 @@ dtraceUtil/tst.DestructWithModule.d.ksh
 dtraceUtil/tst.DestructWithName.d.ksh
 dtraceUtil/tst.DestructWithoutW.d.ksh
 dtraceUtil/tst.DestructWithProvider.d.ksh
-# dtraceUtil/tst.ELFGenerationOut.d.ksh			/* WAIVED: MacOS X doesn't support ELF creation with -G */
-# dtraceUtil/tst.ELFGenerationWithO.d.ksh		/* WAIVED: MacOS X doesn't support ELF creation with -G */
 dtraceUtil/tst.ExitStatus1.d.ksh
 dtraceUtil/tst.ExitStatus2.d.ksh
 dtraceUtil/tst.ExtraneousProbeIds.d.ksh
@@ -385,6 +377,12 @@ enum/err.D_UNKNOWN.RepeatIdentifiers.d
 enum/tst.EnumEquality.d
 enum/tst.EnumSameValue.d
 enum/tst.EnumValAssign.d
+env/err.D_PRAGMA_OPTSET.setfromscript.d
+env/err.D_PRAGMA_OPTSET.unsetfromscript.d
+env/tst.setenv1.ksh
+env/tst.setenv2.ksh
+env/tst.unsetenv1.ksh
+env/tst.unsetenv2.ksh
 error/tst.DTRACEFLT_BADADDR.d
 error/tst.DTRACEFLT_DIVZERO.d
 error/tst.DTRACEFLT_UNKNOWN.d
@@ -401,6 +399,7 @@ fbtprovider/tst.functionreturnvalue.d
 fbtprovider/tst.ioctlargs.d
 fbtprovider/tst.offset.d
 fbtprovider/tst.offsetzero.d
+fbtprovider/tst.predicates.d
 fbtprovider/tst.return.d
 fbtprovider/tst.return0.d
 fbtprovider/tst.tailcall.d
@@ -421,7 +420,6 @@ funcs/err.D_FUNC_UNDEF.progenyofbad1.d
 funcs/err.D_OP_VFPTR.badop.d
 funcs/err.D_PROTO_ARG.chillbadarg.d
 funcs/err.D_PROTO_ARG.copyoutbadarg.d
-# funcs/err.D_PROTO_ARG.mobadarg.d				/* RADAR 4769158: Awaits mutex_enter mutex_owner probes. */
 funcs/err.D_PROTO_ARG.raisebadarg.d
 funcs/err.D_PROTO_LEN.allocanoarg.d
 funcs/err.D_PROTO_LEN.badbreakpoint.d
@@ -431,11 +429,6 @@ funcs/err.D_PROTO_LEN.copyoutstrbadarg.d
 funcs/err.D_PROTO_LEN.copyoutstrtoofew.d
 funcs/err.D_PROTO_LEN.copyouttoofew.d
 funcs/err.D_PROTO_LEN.copyouttoomany.d
-# funcs/err.D_PROTO_LEN.motoofew.d				/* RADAR 4769158: Await mutex_enter mutex_owner probes. */
-# funcs/err.D_PROTO_LEN.motoomany.d
-# funcs/err.D_PROTO_LEN.mtabadarg.d
-# funcs/err.D_PROTO_LEN.mtatoofew.d
-# funcs/err.D_PROTO_LEN.mtatoomany.d
 funcs/err.D_PROTO_LEN.panicbadarg.d
 funcs/err.D_PROTO_LEN.progenyofbad2.d
 funcs/err.D_PROTO_LEN.stopbadarg.d
@@ -448,16 +441,12 @@ funcs/tst.chill.ksh
 funcs/tst.cleanpath.d
 funcs/tst.copyin.d
 funcs/tst.copyinto.d
-# funcs/tst.ddi_pathname.d						/* WAIVED: Solaris device driver model specific. */
 funcs/tst.default.d
 funcs/tst.freopen.ksh
 # funcs/tst.ftruncate.ksh has a race writing its output when run on more than one processor.
 funcs/tst.ftruncate.ksh
 funcs/tst.index.d
 funcs/tst.lltostr.d
-# funcs/tst.mutex_owned.d						/* RADAR 4769158: Await mutex_enter mutex_owner probes. */
-# funcs/tst.mutex_owner.d						/* RADAR 4769158: Await mutex_enter mutex_owner probes. */
-# funcs/tst.mutex_type_adaptive.d				/* RADAR 4769158: Await mutex_enter mutex_owner probes. */
 funcs/tst.progenyof.d
 funcs/tst.rand.d
 funcs/tst.strchr.d
@@ -482,6 +471,9 @@ inline/tst.InlineKinds.d
 inline/tst.InlineTypedef.d
 inline/tst.InlineWritableAssign.d
 # io/tst.fds.d									/* RADAR 4487714: Awaits Darwin io provider. */
+strtoll/err.BaseTooLarge.d
+strtoll/err.BaseTooSmall.d
+strtoll/tst.strtoll.d
 lexer/err.D_CHR_NL.char.d
 lexer/err.D_CHR_NULL.char.d
 lexer/err.D_INT_DIGIT.InvalidDigit.d
@@ -496,18 +488,45 @@ lexer/err.D_SYNTAX.paren1.d
 lexer/err.D_SYNTAX.paren2.d
 lexer/err.D_SYNTAX.paren3.d
 lexer/tst.D_MACRO_OFLOW.ParIntOvflow.d.ksh
-# mib/tst.icmp.ksh								/* DEFERRED: Await Darwin mib provider. */
-# mib/tst.tcp.ksh
-# mib/tst.udp.ksh
+llquantize/err.D_LLQUANT_FACTOREVEN.nodivide.d
+llquantize/err.D_LLQUANT_FACTOREVEN.notfactor.d
+llquantize/err.D_LLQUANT_FACTORMATCH.d
+llquantize/err.D_LLQUANT_FACTORNSTEPS.d
+llquantize/err.D_LLQUANT_FACTORSMALL.d
+llquantize/err.D_LLQUANT_FACTORTYPE.d
+llquantize/err.D_LLQUANT_FACTORVAL.d
+llquantize/err.D_LLQUANT_HIGHMATCH.d
+llquantize/err.D_LLQUANT_HIGHTYPE.d
+llquantize/err.D_LLQUANT_HIGHVAL.d
+llquantize/err.D_LLQUANT_LOWMATCH.d
+llquantize/err.D_LLQUANT_LOWTYPE.d
+llquantize/err.D_LLQUANT_LOWVAL.d
+llquantize/err.D_LLQUANT_MAGRANGE.d
+llquantize/err.D_LLQUANT_MAGTOOBIG.d
+llquantize/err.D_LLQUANT_MAGTOOBIG.offbyone.d
+llquantize/err.D_LLQUANT_NSTEPMATCH.d
+llquantize/err.D_LLQUANT_NSTEPTYPE.d
+llquantize/err.D_LLQUANT_NSTEPVAL.d
+llquantize/tst.bases.d
+llquantize/tst.basic.d
+llquantize/tst.clear.d
+llquantize/tst.multiaggs.d
+llquantize/tst.negorder.d
+llquantize/tst.negvalue.d
+llquantize/tst.normal.d
+llquantize/tst.range.d
+llquantize/tst.steps.d
+llquantize/tst.trunc.d
+lockstat/tst.adaptiveprobes.d
+lockstat/tst.lockprof.spin.ksh
+lockstat/tst.lockprof.ticket.ksh
+lockstat/tst.rwprobes.d
+lockstat/tst.spinprobes.d
+lockstat/tst.ticketprobes.d
 misc/err.D_PRAGMA_OPTSET.d
 misc/tst.badopt.d
 misc/tst.boolopt.d
 misc/tst.dynopt.d
-# misc/tst.enablerace.ksh
-# misc/tst.haslam.d
-# misc/tst.include.ksh
-# misc/tst.roch.d								/* RADAR 4769158: Awaits mutex_enter mutex_owner probes. */
-# misc/tst.schrock.ksh
 multiaggs/err.D_PRINTA_AGGKEY.d
 multiaggs/err.D_PRINTA_AGGPROTO.d
 multiaggs/tst.many.d
@@ -518,6 +537,7 @@ multiaggs/tst.tuplecompat.d
 multiaggs/tst.zero.d
 multiaggs/tst.zero2.d
 multiaggs/tst.zero3.d
+objc/tst.TrampolineBlacklist.ksh
 offsetof/err.D_OFFSETOF_BITFIELD.bitfield.d
 offsetof/err.D_OFFSETOF_TYPE.badtype.d
 offsetof/err.D_OFFSETOF_TYPE.notsou.d
@@ -546,6 +566,9 @@ pid/tst.float.d
 pid/tst.fork.d
 # pid/tst.gcc.d									/* DEFERRED pid/tst.gcc.c never halts!?! */
 pid/tst.manypids.ksh
+pid/tst.oneshot.ksh
+pid/tst.oneshot_return.ksh
+pid/tst.oneshot_multithreaded.ksh
 pid/tst.ret1.d
 pid/tst.ret2.d
 pid/tst.vfork.d
@@ -575,6 +598,8 @@ pointers/err.InvalidAddress5.d
 pointers/tst.ArrayPointer1.d
 pointers/tst.ArrayPointer2.d
 pointers/tst.ArrayPointer3.d
+pointers/tst.assigncast1.d
+pointers/tst.assigncast2.d
 pointers/tst.basic1.d
 pointers/tst.basic2.d
 pointers/tst.GlobalVar.d
@@ -583,6 +608,7 @@ pointers/tst.PointerArithmetic1.d
 pointers/tst.PointerArithmetic2.d
 pointers/tst.PointerArithmetic3.d
 pointers/tst.PointerAssignment.d
+pointers/tst.signs.d
 pointers/tst.ValidPointer1.d
 pointers/tst.ValidPointer2.d
 pointers/tst.VoidCast.d
@@ -593,13 +619,10 @@ pragma/err.D_PRAGMA_UNUSED.UnusedPragma.d
 predicates/err.D_PRED_SCALAR.NonScalarPred.d
 predicates/err.D_SYNTAX.invalid.d
 predicates/err.D_SYNTAX.operr.d
-# predicates/tst.argsnotcached.d				/* WAIVED: Solaris specific VM behavior. */
 # predicates/tst.basics.d has a race writing its output when run on more than one processor.
 predicates/tst.basics.d
 predicates/tst.complex.d
-# predicates/tst.predcache.ksh					/* WAIVED: Solaris specific module load/unload. */
 preprocessor/err.D_IDENT_UNDEF.afterprobe.d
-# preprocessor/err.D_PRAGCTL_INVAL.tabdefine.d	/* WAIVED: Solaris specific cpp behavior. */
 preprocessor/err.D_SYNTAX.withoutpound.d
 preprocessor/err.defincomp.d
 preprocessor/err.ifdefelsenotendif.d
@@ -665,6 +688,7 @@ printf/tst.printgG.d
 printf/tst.printT.d
 printf/tst.printY.d
 printf/tst.rawfmt.d
+printf/tst.signs.d
 printf/tst.str.d
 printf/tst.sym.d
 printf/tst.uints.d
@@ -696,11 +720,9 @@ proc/tst.discard.ksh
 proc/tst.exec.ksh
 proc/tst.execfail.ENOENT.ksh
 proc/tst.execfail.ksh
-# proc/tst.exitcore.ksh						/* WAIVED: needs Solaris coreadm(1) */
 proc/tst.exitexit.ksh
 proc/tst.exitkilled.ksh
 proc/tst.signal.ksh
-# proc/tst.sigwait.d						/* tst.sigwait.c needs porting */
 # proc/tst.startexit.ksh					/* RADAR 4487725 Missing proc:::start !?! */
 processcontrol/tst.exec.ksh
 processcontrol/tst.postinit.ksh
@@ -762,15 +784,12 @@ safety/tst.basename.d
 safety/tst.caller.d
 safety/tst.cleanpath.d
 safety/tst.copyin.d
-# safety/tst.ddi_pathname.d						/* WAIVED: Solaris device driver model specific. */
 safety/tst.dirname.d
 safety/tst.index.d
-# safety/tst.msgdsize.d							/* WAIVED: Darwin doesn't do SysV msg buffers(?) */
 # safety/tst.msgsize.d
 safety/tst.null.d
 safety/tst.progenyof.d
 safety/tst.random.d
-# safety/tst.rw.d								/* RADAR 4769158: Awaits rw_lock_is_held et al */
 safety/tst.shortstr.d
 safety/tst.stack.d
 safety/tst.stackdepth.d
@@ -828,14 +847,9 @@ scripting/tst.pgid.d
 scripting/tst.pid.d
 scripting/tst.ppid.d
 scripting/tst.ppid.ksh
-scripting/tst.projid.d
-# scripting/tst.projid.ksh						/* WAIVED: Solaris projid. */
 scripting/tst.quite.d
-scripting/tst.sid.d
-# scripting/tst.sid.ksh							/* WAIVED: Solaris sid. */
 scripting/tst.stringmacro.ksh
 scripting/tst.taskid.d
-# scripting/tst.taskid.ksh						/* WAIVED: Solaris taskid. */
 scripting/tst.trace.d
 scripting/tst.uid.d
 scripting/tst.uid.ksh
@@ -919,6 +933,9 @@ stackdepth/tst.default.d
 stop/tst.stop1.d
 stop/tst.stop2.d
 strlen/tst.strlen1.d
+strtoll/err.BaseTooLarge.d
+strtoll/err.BaseTooSmall.d
+strtoll/tst.strtoll.d
 struct/err.D_ADDROF_VAR.StructPointer.d
 struct/err.D_DECL_COMBO.StructWithoutColon.d
 struct/err.D_DECL_COMBO.StructWithoutColon1.d
@@ -930,6 +947,7 @@ struct/err.D_DECL_INCOMPLETE.simple.d
 struct/err.D_DECL_VOIDOBJ.baddec.d
 struct/err.D_PROTO_ARG.DupStructAssoc.d
 struct/tst.clauselocal.d
+struct/tst.StructAnon.d
 struct/tst.StructAssoc.d
 struct/tst.StructDataTypes.d
 struct/tst.StructInside.d
@@ -980,7 +998,6 @@ translators/err.D_XLATE_REDECL.RepeatTransDecl.d
 translators/err.D_XLATE_SOU.BadTransDecl8.d
 translators/err.D_XLATE_SOU.BadTransInt.d
 translators/err.D_XLATE_SOU.NonExistentOutput1.d
-# translators/man.TestTransStability.d			/* Manual Test */
 translators/tst.CircularTransDecl.d
 translators/tst.EmptyTransDecl.d
 translators/tst.ForwardTag.d
@@ -1063,6 +1080,7 @@ union/err.D_DECL_INCOMPLETE.order.d
 union/err.D_DECL_INCOMPLETE.recursive.d
 union/err.D_DECL_INCOMPLETE.simple.d
 union/err.D_PROTO_ARG.DupUnionAssoc.d
+union/tst.UnionAnon.d
 union/tst.UnionAssoc.d
 union/tst.UnionDataTypes.d
 union/tst.UnionInside.d
@@ -1079,4 +1097,6 @@ vars/tst.uid.d
 vars/tst.walltimestamp.d
 version/tst.1.0.d
 ../i386/pid/tst.nop.d
+../i386/pid/tst.sse3.movshdup.d
+../i386/arrays/tst.vmregsarray.d
 

@@ -42,13 +42,18 @@ $USAGE = "Usage: $PNAME [-hlqsx] [-d dir] [-f file]"
     . "[-x opt[=arg]] [file | dir ...]\n";
 ($MACH = `uname -p`) =~ s/\W*\n//;
 
+$IS_WATCH = `sw_vers -productName` =~m/^Watch OS/ ? 1 : 0;
+$TIMEOUT = $IS_WATCH ? 480 : 240;
+
+# Destructive actions are enabled when SIP is not enabled
+$DESTRUCT_ON = not(-e '/usr/bin/csrutil' && (`csrutil status` =~/enabled/));
+print($DESTRUCT_ON);
 $dtrace_path = '/usr/sbin/dtrace';
 @dtrace_argv = ();
 
 $DEFAULT_TEST_LIST = $MACH eq 'arm' ? 'common/NoSafetyTests.arm' : 'common/NoSafetyTests';
 
-## $ksh_path = '/usr/bin/ksh';
-$ksh_path = '/bin/sh';
+$dash_path = '/bin/dash';
 
 @files = ();
 $errs = 0;
@@ -159,7 +164,9 @@ sub readtestlist
 	while (my $test = <$fd>) {
 		if (not($test =~ /^#/) and length $test > 1) {
 			chomp($test);
-			push(@files, $test);
+			if (not($test =~ /Destruct|destruct|chill/) or $DESTRUCT_ON) {
+				push(@files, $test);
+			}
 		}
 	}
 	chdir dirname($file) or die "Could not change directory";
@@ -207,7 +214,7 @@ die "$PNAME: failed to open $PNAME.$$.log: $!\n"
 # test programs that require compilation of C code.
 #
 $ENV{'PATH'} = $ENV{'PATH'} . ':/usr/bin';
-$ENV{'TZ'} = 'America/Los_Angeles';
+$ENV{'TZ'} = 'Etc/UTC';
 
 logmsg "[TEST] dtrace\n";
 logmsg "Results in $opt_d\n";
@@ -231,6 +238,7 @@ foreach $file (@files) {
 	
 	$dir = dirname($file);
 	$isksh = 0;
+	$isbinary = 0;
 	$tag = 0;
 	$droptag = 0;
 	$perftest = 0;
@@ -243,6 +251,7 @@ foreach $file (@files) {
 		$status = 0;
 	} elsif ($name =~ /^perf\./) {
 		$isksh = ($ext eq 'ksh');
+		$isbinary = ($ext eq 'exe');
 		$status = 0;
 		$perftest = 1;
 	} elsif ($name =~ /^err\.(D_[A-Z0-9_]+)\./) {
@@ -262,7 +271,7 @@ foreach $file (@files) {
 	$exe = "$dir/$base.exe";
 	$exe_pid = -1;
 
-	if (!$isksh && -x $exe) {
+	if (!($isksh || $isbinary) && -x $exe) {
 		if (($exe_pid = fork()) == -1) {
 			errmsg("[FAIL] failed to fork to run $exe: $!\n");
 			next;
@@ -298,18 +307,21 @@ foreach $file (@files) {
 		push(@dtrace_argv, '-xdroptags') if ($droptag);
 ##		push(@dtrace_argv, $exe_pid) if ($exe_pid != -1);
 
-		if ($isksh) {
+		if ($isbinary and -x $name) {
+			exec('./' . $name);
+		}
+		elsif ($isksh) {
 			exit(123) unless open(STDIN, "<$name");
-			exec($ksh_path);
-		} elsif (-x $name) {
-		        warn "[FAIL] $name is executable\n";
-			exit(1);
-		} else {
+			exec($dash_path);
+		}
+		else {
 			if ($tag == 0 && $status == $0 && $opt_a) {
 				push(@dtrace_argv, '-A');
 			}
+			if ($file =~ /preprocessor/) {
+				push(@dtrace_argv, '-C');
+			}
 
-			push(@dtrace_argv, '-C');
 			push(@dtrace_argv, '-s');
 			push(@dtrace_argv, $name);
 ## Following moved here from above. Puts the pid number in the right place on the "command line"
@@ -323,7 +335,7 @@ foreach $file (@files) {
 
 	eval {
 		local $SIG{ALRM} = sub { die "alarm clock restart" };
-		alarm(240);
+		alarm($TIMEOUT);
 		if (waitpid($pid, 0) == -1) {
 			alarm(0);
 			die "waitpid returned -1";

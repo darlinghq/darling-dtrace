@@ -24,8 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)tst.NoSpecBuffer.d	1.1	06/08/28 SMI"
-
 /*
  * ASSERTION:
  * The number of speculative buffers defaults to one. If no speculative buffer
@@ -42,23 +40,23 @@ BEGIN
 	i = 0;
 }
 
-profile:::profile-10ms
-/i < 2/
+profile:::profile-100ms
+/i < 2 && cpu == 0/
 {
 	self->spec = speculation();
 	printf("Speculative buffer ID: %d\n", self->spec);
 	i++;
 }
 
-profile:::profile-10ms
-/(2 == i) && (0 == self->spec)/
+profile:::profile-100ms
+/(2 == i) && (0 == self->spec) && cpu == 0/
 {
 	printf("i: %d\tself->spec: %d", i, self->spec);
 	exit(0);
 }
 
-profile:::profile-10ms
-/(2 == i) && (0 != self->spec)/
+profile:::profile-100ms
+/(2 == i) && (0 != self->spec) && cpu == 0/
 {
 	printf("i: %d\tself->spec: %d", i, self->spec);
 	exit(1);

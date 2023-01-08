@@ -23,8 +23,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)merge.c	1.13	06/05/03 SMI"
-
 /*
  * This file contains routines that merge one tdata_t tree, called the child,
  * into another, called the parent.  Note that these names are used mainly for
@@ -111,6 +109,8 @@
  * this comment.
  */
 
+
+
 #include <stdio.h>
 #include <strings.h>
 #include <assert.h>
@@ -118,13 +118,18 @@
 
 #include "ctf_headers.h"
 #include "ctftools.h"
+#include "ctfmerge.h"
 #include "list.h"
 #include "alist.h"
 #include "memory.h"
 #include "traverse.h"
 
+#if defined(__APPLE__)
+#include <unistd.h>
+#include <signal.h>
+#endif /* __APPLE__ */
+
 typedef struct equiv_data equiv_data_t;
-typedef struct merge_cb_data merge_cb_data_t;
 
 /*
  * There are two traversals in this file, for equivalency and for tdesc_t
@@ -137,21 +142,6 @@ typedef struct tdesc_ops {
 	tdesc_t *(*conjure)(tdesc_t *, int, merge_cb_data_t *);
 } tdesc_ops_t;
 extern tdesc_ops_t tdesc_ops[];
-
-/*
- * The workhorse structure of tdata_t merging.  Holds all lists of nodes to be
- * processed during various phases of the merge algorithm.
- */
-struct merge_cb_data {
-	tdata_t *md_parent;
-	tdata_t *md_tgt;
-	alist_t *md_ta;		/* Type Association */
-	alist_t *md_fdida;	/* Forward -> Definition ID Association */
-	list_t	**md_iitba;	/* iidesc_t nodes To Be Added to the parent */
-	hash_t	*md_tdtba;	/* tdesc_t nodes To Be Added to the parent */
-	list_t	**md_tdtbr;	/* tdesc_t nodes To Be Remapped */
-	int md_flags;
-}; /* merge_cb_data_t */
 
 /*
  * When we first create a tdata_t from stabs data, we will have duplicate nodes.
@@ -244,6 +234,20 @@ equiv_plain(tdesc_t *stdp, tdesc_t *ttdp, equiv_data_t *ed)
 }
 
 static int
+equiv_ptrauth(tdesc_t *stdp, tdesc_t *ttdp, equiv_data_t *ed)
+{
+	ptrauth_t *sp = stdp->t_ptrauth;
+	ptrauth_t *tp = ttdp->t_ptrauth;
+
+	if (sp->pta_key == tp->pta_key &&
+	    sp->pta_discriminator == tp->pta_discriminator &&
+	    sp->pta_discriminated == tp->pta_discriminated) {
+		return equiv_node(sp->pta_type, tp->pta_type, ed);
+	}
+	return 0;
+}
+
+static int
 equiv_function(tdesc_t *stdp, tdesc_t *ttdp, equiv_data_t *ed)
 {
 	fndef_t *fn1 = stdp->t_fndef, *fn2 = ttdp->t_fndef;
@@ -287,7 +291,7 @@ equiv_su(tdesc_t *stdp, tdesc_t *ttdp, equiv_data_t *ed)
 
 	while (ml1 && ml2) {
 		if (ml1->ml_offset != ml2->ml_offset ||
-		    strcmp(ml1->ml_name, ml2->ml_name) != 0)
+		    ml1->ml_name != ml2->ml_name)
 			return (0);
 
 		/*
@@ -320,7 +324,7 @@ equiv_enum(tdesc_t *stdp, tdesc_t *ttdp, equiv_data_t *ed)
 
 	while (el1 && el2) {
 		if (el1->el_number != el2->el_number ||
-		    strcmp(el1->el_name, el2->el_name) != 0)
+		    el1->el_name != el2->el_name)
 			return (0);
 
 		el1 = el1->el_next;
@@ -375,7 +379,7 @@ equiv_node(tdesc_t *ctdp, tdesc_t *mtdp, equiv_data_t *ed)
 	    mapping == mtdp->t_id && !ed->ed_selfuniquify)
 		return (1);
 
-	if (!streq(ctdp->t_name, mtdp->t_name))
+	if (ctdp->t_name != mtdp->t_name)
 		return (0);
 
 	if (ctdp->t_type != mtdp->t_type) {
@@ -547,7 +551,8 @@ static tdtrav_cb_f map_pre[] = {
 	tdtrav_assert,		/* typedef_unres */
 	map_td_tree_pre,	/* volatile */
 	map_td_tree_pre,	/* const */
-	map_td_tree_pre		/* restrict */
+	map_td_tree_pre,	/* restrict */
+	map_td_tree_pre,	/* ptrauth */
 };
 
 static tdtrav_cb_f map_post[] = {
@@ -564,7 +569,8 @@ static tdtrav_cb_f map_post[] = {
 	tdtrav_assert,		/* typedef_unres */
 	map_td_tree_post,	/* volatile */
 	map_td_tree_post,	/* const */
-	map_td_tree_post	/* restrict */
+	map_td_tree_post,	/* restrict */
+	map_td_tree_post	/* ptrauth */
 };
 
 static tdtrav_cb_f map_self_post[] = {
@@ -581,7 +587,8 @@ static tdtrav_cb_f map_self_post[] = {
 	tdtrav_assert,		/* typedef_unres */
 	map_td_tree_self_post,	/* volatile */
 	map_td_tree_self_post,	/* const */
-	map_td_tree_self_post	/* restrict */
+	map_td_tree_self_post,	/* restrict */
+	map_td_tree_self_post	/* ptrauth */
 };
 
 /*
@@ -608,12 +615,12 @@ iidesc_match(void *data, void *arg)
 	int i;
 
 	if (node->ii_type != iif->iif_template->ii_type ||
-	    !streq(node->ii_name, iif->iif_template->ii_name) ||
+	    node->ii_name != iif->iif_template->ii_name ||
 	    node->ii_dtype->t_id != iif->iif_newidx)
 		return (0);
 
 	if ((node->ii_type == II_SVAR || node->ii_type == II_SFUN) &&
-	    !streq(node->ii_owner, iif->iif_template->ii_owner))
+	    node->ii_owner != iif->iif_template->ii_owner)
 		return (0);
 
 	if (node->ii_nargs != iif->iif_template->ii_nargs)
@@ -634,9 +641,8 @@ iidesc_match(void *data, void *arg)
 		case II_SVAR:
 			debug(3, "suppressing duping of %d %s from %s\n",
 			    iif->iif_template->ii_type,
-			    iif->iif_template->ii_name,
-			    (iif->iif_template->ii_owner ?
-			    iif->iif_template->ii_owner : "NULL"));
+			    iif->iif_template->ii_name->value,
+			    atom_pretty(iif->iif_template->ii_owner, "NULL"));
 			return (0);
 		case II_NOT:
 		case II_PSYM:
@@ -674,10 +680,10 @@ merge_type_cb(void *data, void *arg)
 		/* successfully mapped */
 		return (1);
 
-	debug(3, "tba %s (%d)\n", (sii->ii_name ? sii->ii_name : "(anon)"),
+	debug(3, "tba %s (%d)\n", atom_pretty(sii->ii_name, "(anon)"),
 	    sii->ii_type);
 
-	list_add(mcd->md_iitba, sii);
+	array_add(&mcd->md_iitba, sii);
 
 	return (0);
 }
@@ -705,7 +711,7 @@ remap_node(tdesc_t **tgtp, tdesc_t *oldtgt, int selftid, tdesc_t *newself,
 		debug(3, "Remap couldn't find %d (from %d)\n", template.t_id,
 		    oldid);
 		*tgtp = oldtgt;
-		list_add(mcd->md_tdtbr, tgtp);
+		array_add(&mcd->md_tdtbr, tgtp);
 		return (0);
 	}
 
@@ -718,7 +724,7 @@ conjure_template(tdesc_t *old, int newselfid)
 {
 	tdesc_t *new = xcalloc(sizeof (tdesc_t));
 
-	new->t_name = old->t_name ? xstrdup(old->t_name) : NULL;
+	new->t_name = old->t_name;
 	new->t_type = old->t_type;
 	new->t_size = old->t_size;
 	new->t_id = newselfid;
@@ -750,20 +756,36 @@ conjure_plain(tdesc_t *old, int newselfid, merge_cb_data_t *mcd)
 }
 
 static tdesc_t *
+conjure_ptrauth(tdesc_t *old, int newselfid, merge_cb_data_t *mcd)
+{
+	tdesc_t *new = conjure_template(old, newselfid);
+	ptrauth_t *nptr = xmalloc(sizeof (ptrauth_t));
+	ptrauth_t *optr = old->t_ptrauth;
+
+	(void) remap_node(&nptr->pta_type, optr->pta_type, old->t_id, new,
+	    mcd);
+
+	nptr->pta_key = optr->pta_key;
+	nptr->pta_discriminator = optr->pta_discriminator;
+	nptr->pta_discriminated = optr->pta_discriminated;
+
+	new->t_ptrauth = nptr;
+
+	return (new);
+}
+
+static tdesc_t *
 conjure_function(tdesc_t *old, int newselfid, merge_cb_data_t *mcd)
 {
 	tdesc_t *new = conjure_template(old, newselfid);
-	fndef_t *nfn = xmalloc(sizeof (fndef_t));
 	fndef_t *ofn = old->t_fndef;
+	fndef_t *nfn = xmalloc(sizeof (fndef_t) + ofn->fn_nargs * sizeof(tdesc_t *));
 	int i;
 
 	(void) remap_node(&nfn->fn_ret, ofn->fn_ret, old->t_id, new, mcd);
 
 	nfn->fn_nargs = ofn->fn_nargs;
 	nfn->fn_vargs = ofn->fn_vargs;
-
-	if (nfn->fn_nargs > 0)
-		nfn->fn_args = xcalloc(sizeof (tdesc_t *) * ofn->fn_nargs);
 
 	for (i = 0; i < ofn->fn_nargs; i++) {
 		(void) remap_node(&nfn->fn_args[i], ofn->fn_args[i], old->t_id,
@@ -805,7 +827,7 @@ conjure_su(tdesc_t *old, int newselfid, merge_cb_data_t *mcd)
 		*nmemp = xmalloc(sizeof (mlist_t));
 		(*nmemp)->ml_offset = omem->ml_offset;
 		(*nmemp)->ml_size = omem->ml_size;
-		(*nmemp)->ml_name = xstrdup(omem->ml_name);
+		(*nmemp)->ml_name = omem->ml_name;
 		(void) remap_node(&((*nmemp)->ml_type), omem->ml_type,
 		    old->t_id, new, mcd);
 	}
@@ -824,7 +846,7 @@ conjure_enum(tdesc_t *old, int newselfid, merge_cb_data_t *mcd)
 	for (oel = old->t_emem, nelp = &new->t_emem;
 	    oel; oel = oel->el_next, nelp = &((*nelp)->el_next)) {
 		*nelp = xmalloc(sizeof (elist_t));
-		(*nelp)->el_name = xstrdup(oel->el_name);
+		(*nelp)->el_name = oel->el_name;
 		(*nelp)->el_number = oel->el_number;
 	}
 	*nelp = NULL;
@@ -836,11 +858,7 @@ conjure_enum(tdesc_t *old, int newselfid, merge_cb_data_t *mcd)
 static tdesc_t *
 conjure_forward(tdesc_t *old, int newselfid, merge_cb_data_t *mcd)
 {
-	tdesc_t *new = conjure_template(old, newselfid);
-
-	list_add(&mcd->md_tgt->td_fwdlist, new);
-
-	return (new);
+	return conjure_template(old, newselfid);
 }
 
 /*ARGSUSED*/
@@ -896,7 +914,8 @@ static tdtrav_cb_f fwd_redir_cbs[] = {
 	tdtrav_assert,		/* typedef_unres */
 	NULL,			/* volatile */
 	NULL,			/* const */
-	NULL			/* restrict */
+	NULL,			/* restrict */
+	NULL			/* ptrauth */
 };
 
 typedef struct redir_mstr_data {
@@ -932,7 +951,7 @@ static void
 redir_mstr_fwds(merge_cb_data_t *mcd)
 {
 	redir_mstr_data_t rmd;
-	alist_t *map = alist_new(NULL, NULL);
+	alist_t *map = alist_new(ALIST_HASH_SIZE);
 
 	rmd.rmd_tgt = mcd->md_tgt;
 	rmd.rmd_map = map;
@@ -957,8 +976,6 @@ add_iitba_cb(void *data, void *private)
 	newidx = get_mapping(mcd->md_ta, tba->ii_dtype->t_id);
 	assert(newidx != -1);
 
-	(void) list_remove(mcd->md_iitba, data, NULL, NULL);
-
 	iif.iif_template = tba;
 	iif.iif_ta = mcd->md_ta;
 	iif.iif_newidx = newidx;
@@ -967,7 +984,7 @@ add_iitba_cb(void *data, void *private)
 	if (hash_match(mcd->md_parent->td_iihash, tba, iidesc_match,
 	    &iif) == 1) {
 		debug(3, "iidesc_t %s already exists\n",
-		    (tba->ii_name ? tba->ii_name : "(anon)"));
+		    atom_pretty(tba->ii_name, "(anon)"));
 		return (1);
 	}
 
@@ -1029,39 +1046,30 @@ add_tdtbr_cb(void *data, void *arg)
 	debug(3, "Remapping %s (%d)\n", tdesc_name(*tdpp), (*tdpp)->t_id);
 
 	if (!remap_node(tdpp, *tdpp, -1, NULL, mcd))
-		return (0);
+		return ARRAY_KEEP;
 
-	(void) list_remove(mcd->md_tdtbr, (void *)tdpp, NULL, NULL);
-	return (1);
+	return ARRAY_REMOVE;
 }
 
 static void
 merge_types(hash_t *src, merge_cb_data_t *mcd)
 {
-	list_t *iitba = NULL;
-	list_t *tdtbr = NULL;
 	int iirc, tdrc;
-
-	mcd->md_iitba = &iitba;
-	mcd->md_tdtba = hash_new(TDATA_LAYOUT_HASH_SIZE, tdesc_layouthash,
-	    tdesc_layoutcmp);
-	mcd->md_tdtbr = &tdtbr;
 
 	(void) hash_iter(src, merge_type_cb, mcd);
 
 	tdrc = hash_iter(mcd->md_tdtba, add_tdtba_cb, (void *)mcd);
 	debug(3, "add_tdtba_cb added %d items\n", tdrc);
 
-	iirc = list_iter(*mcd->md_iitba, add_iitba_cb, (void *)mcd);
+	iirc = array_iter(mcd->md_iitba, add_iitba_cb, (void *)mcd);
 	debug(3, "add_iitba_cb added %d items\n", iirc);
 
-	assert(list_count(*mcd->md_iitba) == 0 &&
-	    hash_count(mcd->md_tdtba) == 0);
+	assert(hash_count(mcd->md_tdtba) == 0);
 
-	tdrc = list_iter(*mcd->md_tdtbr, add_tdtbr_cb, (void *)mcd);
+	tdrc = array_filter(mcd->md_tdtbr, add_tdtbr_cb, (void *)mcd);
 	debug(3, "add_tdtbr_cb added %d items\n", tdrc);
 
-	if (list_count(*mcd->md_tdtbr) != 0)
+	if (array_count(mcd->md_tdtbr) != 0)
 		aborterr("Couldn't remap all nodes\n");
 
 	/*
@@ -1078,9 +1086,20 @@ merge_types(hash_t *src, merge_cb_data_t *mcd)
 }
 
 void
-merge_into_master(tdata_t *cur, tdata_t *mstr, tdata_t *tgt, int selfuniquify)
+merge_cb_data_destroy(merge_cb_data_t *mcd)
 {
-	merge_cb_data_t mcd;
+	hash_free(mcd->md_tdtba, NULL, NULL);
+	alist_free(mcd->md_fdida);
+	alist_free(mcd->md_ta);
+	array_free(&mcd->md_iitba, NULL, NULL);
+	array_free(&mcd->md_tdtbr, NULL, NULL);
+}
+
+void
+merge_into_master(merge_cb_data_t *mcd, tdata_t *cur, tdata_t *mstr,
+    tdata_t *tgt, int selfuniquify)
+{
+	merge_cb_data_t mcd_buf = {0};
 
 	cur->td_ref++;
 	mstr->td_ref++;
@@ -1090,31 +1109,45 @@ merge_into_master(tdata_t *cur, tdata_t *mstr, tdata_t *tgt, int selfuniquify)
 	assert(cur->td_ref == 1 && mstr->td_ref == 1 &&
 	    (tgt == NULL || tgt->td_ref == 1));
 
-	mcd.md_parent = mstr;
-	mcd.md_tgt = (tgt ? tgt : mstr);
-	mcd.md_ta = alist_new(NULL, NULL);
-	mcd.md_fdida = alist_new(NULL, NULL);
-	mcd.md_flags = 0;
+	if (mcd == NULL) {
+		mcd = &mcd_buf;
+	}
+	mcd->md_parent = mstr;
+	mcd->md_tgt = (tgt ? tgt : mstr);
+	if (mcd->md_ta == NULL) { // this is an init
+		mcd->md_tdtba = hash_new(TDATA_LAYOUT_HASH_SIZE, tdesc_layouthash,
+		    tdesc_layoutcmp);
+		mcd->md_ta = alist_new(ALIST_HASH_SIZE);
+		mcd->md_fdida = alist_new(ALIST_HASH_SIZE);
+	} else {
+		if (hash_count(mcd->md_tdtba) != 0)
+			terminate("The tdtba hash wasn't properly emptied");
+		alist_clear(mcd->md_ta);
+		alist_clear(mcd->md_fdida);
+		array_clear(mcd->md_iitba, NULL, NULL);
+		array_clear(mcd->md_tdtbr, NULL, NULL);
+	}
 
 	if (selfuniquify)
-		mcd.md_flags |= MCD_F_SELFUNIQUIFY;
+		mcd->md_flags |= MCD_F_SELFUNIQUIFY;
 	if (tgt)
-		mcd.md_flags |= MCD_F_REFMERGE;
+		mcd->md_flags |= MCD_F_REFMERGE;
 
 	mstr->td_curvgen = MAX(mstr->td_curvgen, cur->td_curvgen);
 	mstr->td_curemark = MAX(mstr->td_curemark, cur->td_curemark);
 
-	merge_types(cur->td_iihash, &mcd);
+	merge_types(cur->td_iihash, mcd);
 
 	if (debug_level >= 3) {
 		debug(3, "Type association stats\n");
-		alist_stats(mcd.md_ta, 0);
+		alist_stats(mcd->md_ta, 0);
 		debug(3, "Layout hash stats\n");
-		hash_stats(mcd.md_tgt->td_layouthash, 1);
+		hash_stats(mcd->md_tgt->td_layouthash, 1);
 	}
 
-	alist_free(mcd.md_fdida);
-	alist_free(mcd.md_ta);
+	if (mcd == &mcd_buf) {
+		merge_cb_data_destroy(mcd);
+	}
 
 	cur->td_ref--;
 	mstr->td_ref--;
@@ -1136,5 +1169,682 @@ tdesc_ops_t tdesc_ops[] = {
 	{ "typedef_unres",	equiv_assert,		conjure_assert },
 	{ "volatile",		equiv_plain,		conjure_plain },
 	{ "const", 		equiv_plain,		conjure_plain },
-	{ "restrict",		equiv_plain,		conjure_plain }
+	{ "restrict",		equiv_plain,		conjure_plain },
+	{ "ptrauth",		equiv_ptrauth,		conjure_ptrauth }
 };
+
+
+/*
+ * Given tdata_t structures containing CTF data, merge and uniquify that data into
+ * a single tdata_t.
+ *
+ * Merges can proceed independently.  As such, we perform the merges in parallel
+ * using a worker thread model.  A given glob of CTF data (either all of the CTF
+ * data from a single input file, or the result of one or more merges) can only
+ * be involved in a single merge at any given time, so the process decreases in
+ * parallelism, especially towards the end, as more and more files are
+ * consolidated, finally resulting in a single merge of two large CTF graphs.
+ * Unfortunately, the last merge is also the slowest, as the two graphs being
+ * merged are each the product of merges of half of the input files.
+ *
+ * The algorithm consists of two phases, described in detail below.  The first
+ * phase entails the merging of CTF data in groups of eight.  The second phase
+ * takes the results of Phase I, and merges them two at a time.  This disparity
+ * is due to an observation that the merge time increases at least quadratically
+ * with the size of the CTF data being merged.  As such, merges of CTF graphs
+ * newly read from input files are much faster than merges of CTF graphs that
+ * are themselves the results of prior merges.
+ *
+ * A further complication is the need to ensure the repeatability of CTF merges.
+ * That is, a merge should produce the same output every time, given the same
+ * input.  In both phases, this consistency requirement is met by imposing an
+ * ordering on the merge process, thus ensuring that a given set of input files
+ * are merged in the same order every time.
+ *
+ *   Phase I
+ *
+ *   The main thread reads the input files one by one, transforming the CTF
+ *   data they contain into tdata structures.  When a given file has been read
+ *   and parsed, it is placed on the work queue for retrieval by worker threads.
+ *
+ *   Central to Phase I is the Work In Progress (wip) array, which is used to
+ *   merge batches of files in a predictable order.  Files are read by the main
+ *   thread, and are merged into wip array elements in round-robin order.  When
+ *   the number of files merged into a given array slot equals the batch size,
+ *   the merged CTF graph in that array is added to the done slot in order by
+ *   array slot.
+ *
+ *   For example, consider a case where we have five input files, a batch size
+ *   of two, a wip array size of two, and two worker threads (T1 and T2).
+ *
+ *    1. The wip array elements are assigned initial batch numbers 0 and 1.
+ *    2. T1 reads an input file from the input queue (wq_queue).  This is the
+ *       first input file, so it is placed into wip[0].  The second file is
+ *       similarly read and placed into wip[1].  The wip array slots now contain
+ *       one file each (wip_nmerged == 1).
+ *    3. T1 reads the third input file, which it merges into wip[0].  The
+ *       number of files in wip[0] is equal to the batch size.
+ *    4. T2 reads the fourth input file, which it merges into wip[1].  wip[1]
+ *       is now full too.
+ *    5. T2 attempts to place the contents of wip[1] on the done queue
+ *       (wq_done_queue), but it can't, since the batch ID for wip[1] is 1.
+ *       Batch 0 needs to be on the done queue before batch 1 can be added, so
+ *       T2 blocks on wip[1]'s cv.
+ *    6. T1 attempts to place the contents of wip[0] on the done queue, and
+ *       succeeds, updating wq_lastdonebatch to 0.  It clears wip[0], and sets
+ *       its batch ID to 2.  T1 then signals wip[1]'s cv to awaken T2.
+ *    7. T2 wakes up, notices that wq_lastdonebatch is 0, which means that
+ *       batch 1 can now be added.  It adds wip[1] to the done queue, clears
+ *       wip[1], and sets its batch ID to 3.  It signals wip[0]'s cv, and
+ *       restarts.
+ *
+ *   The above process continues until all input files have been consumed.  At
+ *   this point, a pair of barriers are used to allow a single thread to move
+ *   any partial batches from the wip array to the done array in batch ID order.
+ *   When this is complete, wq_done_queue is moved to wq_queue, and Phase II
+ *   begins.
+ *
+ *	Locking Semantics (Phase I)
+ *
+ *	The input queue (wq_queue) and the done queue (wq_done_queue) are
+ *	protected by separate mutexes - wq_queue_lock and wq_done_queue.  wip
+ *	array slots are protected by their own mutexes, which must be grabbed
+ *	before releasing the input queue lock.  The wip array lock is dropped
+ *	when the thread restarts the loop.  If the array slot was full, the
+ *	array lock will be held while the slot contents are added to the done
+ *	queue.  The done queue lock is used to protect the wip slot cv's.
+ *
+ *	The pow number is protected by the queue lock.  The master batch ID
+ *	and last completed batch (wq_lastdonebatch) counters are protected *in
+ *	Phase I* by the done queue lock.
+ *
+ *   Phase II
+ *
+ *   When Phase II begins, the queue consists of the merged batches from the
+ *   first phase.  Assume we have five batches:
+ *
+ *	Q:	a b c d e
+ *
+ *   Using the same batch ID mechanism we used in Phase I, but without the wip
+ *   array, worker threads remove two entries at a time from the beginning of
+ *   the queue.  These two entries are merged, and are added back to the tail
+ *   of the queue, as follows:
+ *
+ *	Q:	a b c d e	# start
+ *	Q:	c d e ab	# a, b removed, merged, added to end
+ *	Q:	e ab cd		# c, d removed, merged, added to end
+ *	Q:	cd eab		# e, ab removed, merged, added to end
+ *	Q:	cdeab		# cd, eab removed, merged, added to end
+ *
+ *   When one entry remains on the queue, with no merges outstanding, Phase II
+ *   finishes.  We pre-determine the stopping point by pre-calculating the
+ *   number of nodes that will appear on the list.  In the example above, the
+ *   number (wq_ninqueue) is 9.  When ninqueue is 1, we conclude Phase II by
+ *   signaling the main thread via wq_done_cv.
+ *
+ *	Locking Semantics (Phase II)
+ *
+ *	The queue (wq_queue), ninqueue, and the master batch ID and last
+ *	completed batch counters are protected by wq_queue_lock.  The done
+ *	queue and corresponding lock are unused in Phase II as is the wip array.
+ *
+ *   Uniquification
+ *
+ *   We want the CTF data that goes into a given module to be as small as
+ *   possible.  For example, we don't want it to contain any type data that may
+ *   be present in another common module.  As such, after creating the master
+ *   tdata_t for a given module, we can, if requested by the user, uniquify it
+ *   against the tdata_t from another module (genunix in the case of the SunOS
+ *   kernel).  We perform a merge between the tdata_t for this module and the
+ *   tdata_t from genunix.  Nodes found in this module that are not present in
+ *   genunix are added to a third tdata_t - the uniquified tdata_t.
+ *
+ *   Additive Merges
+ *
+ *   In some cases, for example if we are issuing a new version of a common
+ *   module in a patch, we need to make sure that the CTF data already present
+ *   in that module does not change.  Changes to this data would void the CTF
+ *   data in any module that uniquified against the common module.  To preserve
+ *   the existing data, we can perform what is known as an additive merge.  In
+ *   this case, a final uniquification is performed against the CTF data in the
+ *   previous version of the module.  The result will be the placement of new
+ *   and changed data after the existing data, thus preserving the existing type
+ *   ID space.
+ *
+ *   Saving the result
+ *
+ *   When the merges are complete, the resulting tdata_t is placed into the
+ *   output file, replacing the .SUNW_ctf section (if any) already in that file.
+ *
+ * The person who changes the merging thread code in this file without updating
+ * this comment will not live to see the stock hit five.
+ */
+
+#if !defined(__APPLE__)
+#pragma init(bigheap)
+static size_t maxpgsize = 0x400000;
+#endif /* __APPLE__ */
+
+#define	MERGE_PHASE1_BATCH_SIZE		8
+#define	MERGE_PHASE1_MAX_SLOTS		5
+#define	MERGE_INPUT_THROTTLE_LEN	10
+
+#if !defined(__APPLE__)
+static void
+bigheap(void)
+{
+	size_t big, *size;
+	int sizes;
+	struct memcntl_mha mha;
+
+	/*
+	 * First, get the available pagesizes.
+	 */
+	if ((sizes = getpagesizes(NULL, 0)) == -1)
+		return;
+
+	if (sizes == 1 || (size = alloca(sizeof (size_t) * sizes)) == NULL)
+		return;
+
+	if (getpagesizes(size, sizes) == -1)
+		return;
+
+	while (size[sizes - 1] > maxpgsize)
+		sizes--;
+
+	/* set big to the largest allowed page size */
+	big = size[sizes - 1];
+	if (big & (big - 1)) {
+		/*
+		 * The largest page size is not a power of two for some
+		 * inexplicable reason; return.
+		 */
+		return;
+	}
+
+	/*
+	 * Now, align our break to the largest page size.
+	 */
+	if (brk((void *)((((uintptr_t)sbrk(0) - 1) & ~(big - 1)) + big)) != 0)
+		return;
+
+	/*
+	 * set the preferred page size for the heap
+	 */
+	mha.mha_cmd = MHA_MAPSIZE_BSSBRK;
+	mha.mha_flags = 0;
+	mha.mha_pagesize = big;
+
+	(void) memcntl(NULL, 0, MC_HAT_ADVISE, (caddr_t)&mha, 0, 0);
+}
+}
+#else
+static void
+bigheap(void)
+{
+	/* NOOP */
+}
+#endif /* __APPLE__ */
+
+static void
+finalize_phase_one(workqueue_t *wq)
+{
+	int startslot, i;
+
+	/*
+	 * wip slots are cleared out only when maxbatchsz td's have been merged
+	 * into them.  We're not guaranteed that the number of files we're
+	 * merging is a multiple of maxbatchsz, so there will be some partial
+	 * groups in the wip array.  Move them to the done queue in batch ID
+	 * order, starting with the slot containing the next batch that would
+	 * have been placed on the done queue, followed by the others.
+	 * One thread will be doing this while the others wait at the barrier
+	 * back in worker_thread(), so we don't need to worry about pesky things
+	 * like locks.
+	 */
+
+	for (startslot = -1, i = 0; i < wq->wq_nwipslots; i++) {
+		if (wq->wq_wip[i].wip_batchid == wq->wq_lastdonebatch + 1) {
+			startslot = i;
+			break;
+		}
+	}
+
+	assert(startslot != -1);
+
+	for (i = startslot; i < startslot + wq->wq_nwipslots; i++) {
+		int slotnum = i % wq->wq_nwipslots;
+		wip_t *wipslot = &wq->wq_wip[slotnum];
+
+		if (wipslot->wip_td != NULL) {
+			debug(2, "clearing slot %d (%d) (saving %d)\n",
+			    slotnum, i, wipslot->wip_nmerged);
+		} else
+			debug(2, "clearing slot %d (%d)\n", slotnum, i);
+
+		if (wipslot->wip_td != NULL) {
+			fifo_add(wq->wq_donequeue, wipslot->wip_td);
+			wq->wq_wip[slotnum].wip_td = NULL;
+		}
+	}
+
+	wq->wq_lastdonebatch = wq->wq_next_batchid++;
+
+	debug(2, "phase one done: donequeue has %d items\n",
+	    fifo_len(wq->wq_donequeue));
+}
+
+static void
+init_phase_two(workqueue_t *wq)
+{
+	int num;
+
+	/*
+	 * We're going to continually merge the first two entries on the queue,
+	 * placing the result on the end, until there's nothing left to merge.
+	 * At that point, everything will have been merged into one.  The
+	 * initial value of ninqueue needs to be equal to the total number of
+	 * entries that will show up on the queue, both at the start of the
+	 * phase and as generated by merges during the phase.
+	 */
+	wq->wq_ninqueue = num = fifo_len(wq->wq_donequeue);
+	while (num != 1) {
+		wq->wq_ninqueue += num / 2;
+		num = num / 2 + num % 2;
+	}
+
+	/*
+	 * Move the done queue to the work queue.  We won't be using the done
+	 * queue in phase 2.
+	 */
+	assert(fifo_len(wq->wq_queue) == 0);
+	fifo_free(wq->wq_queue, NULL);
+	wq->wq_queue = wq->wq_donequeue;
+}
+
+static void
+wip_save_work(workqueue_t *wq, wip_t *slot, int slotnum)
+{
+	pthread_mutex_lock(&wq->wq_donequeue_lock);
+
+	while (wq->wq_lastdonebatch + 1 < slot->wip_batchid)
+		pthread_cond_wait(&slot->wip_cv, &wq->wq_donequeue_lock);
+	assert(wq->wq_lastdonebatch + 1 == slot->wip_batchid);
+
+	fifo_add(wq->wq_donequeue, slot->wip_td);
+	wq->wq_lastdonebatch++;
+	pthread_cond_signal(&wq->wq_wip[(slotnum + 1) %
+	    wq->wq_nwipslots].wip_cv);
+
+	/* reset the slot for next use */
+	slot->wip_td = NULL;
+	slot->wip_batchid = wq->wq_next_batchid++;
+
+	pthread_mutex_unlock(&wq->wq_donequeue_lock);
+}
+
+static void
+wip_add_work(merge_cb_data_t *mcd, wip_t *slot, tdata_t *pow)
+{
+	if (slot->wip_td == NULL) {
+		slot->wip_td = pow;
+		slot->wip_nmerged = 1;
+	} else {
+		debug(2, "%d: merging %p into %p\n", pthread_self(),
+		    (void *)pow, (void *)slot->wip_td);
+
+		merge_into_master(mcd, pow, slot->wip_td, NULL, 0);
+		tdata_free(pow);
+
+		slot->wip_nmerged++;
+	}
+}
+
+static void
+worker_runphase1(workqueue_t *wq, merge_cb_data_t *mcd)
+{
+	wip_t *wipslot;
+	tdata_t *pow;
+	int wipslotnum, pownum;
+
+	for (;;) {
+		pthread_mutex_lock(&wq->wq_queue_lock);
+
+		while (fifo_empty(wq->wq_queue)) {
+			if (wq->wq_nomorefiles == 1) {
+				pthread_cond_signal(&wq->wq_work_avail);
+				pthread_mutex_unlock(&wq->wq_queue_lock);
+
+				/* on to phase 2 ... */
+				return;
+			}
+
+			pthread_cond_wait(&wq->wq_work_avail,
+			    &wq->wq_queue_lock);
+		}
+
+		/* there's work to be done! */
+		pow = fifo_remove(wq->wq_queue);
+		pownum = wq->wq_nextpownum++;
+		pthread_cond_broadcast(&wq->wq_work_removed);
+
+		assert(pow != NULL);
+
+		/* merge it into the right slot */
+		wipslotnum = pownum % wq->wq_nwipslots;
+		wipslot = &wq->wq_wip[wipslotnum];
+
+		pthread_mutex_lock(&wipslot->wip_lock);
+
+		pthread_mutex_unlock(&wq->wq_queue_lock);
+
+		wip_add_work(mcd, wipslot, pow);
+
+		if (wipslot->wip_nmerged == wq->wq_maxbatchsz)
+			wip_save_work(wq, wipslot, wipslotnum);
+
+		pthread_mutex_unlock(&wipslot->wip_lock);
+	}
+}
+
+static void
+worker_runphase2(workqueue_t *wq, merge_cb_data_t *mcd)
+{
+	tdata_t *pow1, *pow2;
+	int batchid;
+
+	for (;;) {
+		pthread_mutex_lock(&wq->wq_queue_lock);
+
+		if (wq->wq_ninqueue == 1) {
+			pthread_cond_signal(&wq->wq_work_avail);
+			pthread_mutex_unlock(&wq->wq_queue_lock);
+
+			debug(2, "%d: entering p2 completion barrier\n",
+			    pthread_self());
+			if (barrier_wait(&wq->wq_bar1)) {
+				pthread_mutex_lock(&wq->wq_queue_lock);
+				wq->wq_alldone = 1;
+				pthread_cond_signal(&wq->wq_alldone_cv);
+				pthread_mutex_unlock(&wq->wq_queue_lock);
+			}
+
+			return;
+		}
+
+		if (fifo_len(wq->wq_queue) < 2) {
+			pthread_cond_wait(&wq->wq_work_avail,
+			    &wq->wq_queue_lock);
+			pthread_mutex_unlock(&wq->wq_queue_lock);
+			continue;
+		}
+
+		/* there's work to be done! */
+		pow1 = fifo_remove(wq->wq_queue);
+		pow2 = fifo_remove(wq->wq_queue);
+		wq->wq_ninqueue -= 2;
+
+		batchid = wq->wq_next_batchid++;
+
+		pthread_mutex_unlock(&wq->wq_queue_lock);
+
+		debug(2, "%d: merging %p into %p\n", pthread_self(),
+		    (void *)pow1, (void *)pow2);
+		merge_into_master(mcd, pow1, pow2, NULL, 0);
+		tdata_free(pow1);
+
+		/*
+		 * merging is complete.  place at the tail of the queue in
+		 * proper order.
+		 */
+		pthread_mutex_lock(&wq->wq_queue_lock);
+		while (wq->wq_lastdonebatch + 1 != batchid) {
+			pthread_cond_wait(&wq->wq_done_cv,
+			    &wq->wq_queue_lock);
+		}
+
+		wq->wq_lastdonebatch = batchid;
+
+		fifo_add(wq->wq_queue, pow2);
+		debug(2, "%d: added %p to queue, len now %d, ninqueue %d\n",
+		    pthread_self(), (void *)pow2, fifo_len(wq->wq_queue),
+		    wq->wq_ninqueue);
+		pthread_cond_broadcast(&wq->wq_done_cv);
+		pthread_cond_signal(&wq->wq_work_avail);
+		pthread_mutex_unlock(&wq->wq_queue_lock);
+	}
+}
+
+/*
+ * Main loop for worker threads.
+ */
+static void
+worker_thread(workqueue_t *wq)
+{
+	merge_cb_data_t mcd = {0};
+
+	worker_runphase1(wq, &mcd);
+
+	debug(2, "%d: entering first barrier\n", pthread_self());
+
+	if (barrier_wait(&wq->wq_bar1)) {
+
+		debug(2, "%d: doing work in first barrier\n", pthread_self());
+
+		finalize_phase_one(wq);
+
+		init_phase_two(wq);
+
+		debug(2, "%d: ninqueue is %d, %d on queue\n", pthread_self(),
+		    wq->wq_ninqueue, fifo_len(wq->wq_queue));
+	}
+
+	debug(2, "%d: entering second barrier\n", pthread_self());
+
+	(void) barrier_wait(&wq->wq_bar2);
+
+	debug(2, "%d: phase 1 complete\n", pthread_self());
+
+	worker_runphase2(wq, &mcd);
+
+	merge_cb_data_destroy(&mcd);
+}
+
+/*
+ * Pass a tdata_t tree, built from an input file, off to the work queue for
+ * consumption by worker threads.
+ */
+static int
+worker_add_td(workqueue_t *wq, tdata_t *td, const char *name)
+{
+	debug(3, "Adding tdata %p for processing\n", (void *)td);
+
+	pthread_mutex_lock(&wq->wq_queue_lock);
+	while (fifo_len(wq->wq_queue) > wq->wq_ithrottle) {
+		debug(2, "Throttling input (len = %d, throttle = %d)\n",
+		    fifo_len(wq->wq_queue), wq->wq_ithrottle);
+		pthread_cond_wait(&wq->wq_work_removed, &wq->wq_queue_lock);
+	}
+
+	fifo_add(wq->wq_queue, td);
+	debug(1, "Thread %d announcing %s\n", pthread_self(), name);
+	pthread_cond_signal(&wq->wq_work_avail);
+	pthread_mutex_unlock(&wq->wq_queue_lock);
+
+	return (1);
+}
+
+/*
+ * This program is intended to be invoked from a Makefile, as part of the build.
+ * As such, in the event of a failure or user-initiated interrupt (^C), we need
+ * to ensure that a subsequent re-make will cause ctfmerge to be executed again.
+ * Unfortunately, ctfmerge will usually be invoked directly after (and as part
+ * of the same Makefile rule as) a link, and will operate on the linked file
+ * in place.  If we merely exit upon receipt of a SIGINT, a subsequent make
+ * will notice that the *linked* file is newer than the object files, and thus
+ * will not reinvoke ctfmerge.  The only way to ensure that a subsequent make
+ * reinvokes ctfmerge, is to remove the file to which we are adding CTF
+ * data (confusingly named the output file).  This means that the link will need
+ * to happen again, but links are generally fast, and we can't allow the merge
+ * to be skipped.
+ *
+ * Another possibility would be to block SIGINT entirely - to always run to
+ * completion.  The run time of ctfmerge can, however, be measured in minutes
+ * in some cases, so this is not a valid option.
+ */
+static void
+handle_sig(int sig)
+{
+	terminate("Caught signal %d - exiting\n", sig);
+}
+
+
+static void
+wq_init(workqueue_t *wq, int nfiles)
+{
+	int throttle, nslots, i;
+
+	if (getenv("CTFMERGE_MAX_SLOTS"))
+		nslots = atoi(getenv("CTFMERGE_MAX_SLOTS"));
+	else
+		nslots = MERGE_PHASE1_MAX_SLOTS;
+
+	if (getenv("CTFMERGE_PHASE1_BATCH_SIZE"))
+		wq->wq_maxbatchsz = atoi(getenv("CTFMERGE_PHASE1_BATCH_SIZE"));
+	else
+		wq->wq_maxbatchsz = MERGE_PHASE1_BATCH_SIZE;
+
+	nslots = MIN(nslots, (nfiles + wq->wq_maxbatchsz - 1) /
+	    wq->wq_maxbatchsz);
+
+	wq->wq_wip = xcalloc(sizeof (wip_t) * nslots);
+	wq->wq_nwipslots = nslots;
+	wq->wq_nthreads = MIN(sysconf(_SC_NPROCESSORS_ONLN) * 3 / 2, nslots);
+	wq->wq_thread = xmalloc(sizeof (pthread_t) * wq->wq_nthreads);
+
+	if (getenv("CTFMERGE_INPUT_THROTTLE"))
+		throttle = atoi(getenv("CTFMERGE_INPUT_THROTTLE"));
+	else
+		throttle = MERGE_INPUT_THROTTLE_LEN;
+	wq->wq_ithrottle = throttle * wq->wq_nthreads;
+
+	debug(1, "Using %d slots, %d threads\n", wq->wq_nwipslots,
+	    wq->wq_nthreads);
+
+	wq->wq_next_batchid = 0;
+
+	for (i = 0; i < nslots; i++) {
+		pthread_mutex_init(&wq->wq_wip[i].wip_lock, NULL);
+#if defined(__APPLE__)
+		pthread_cond_init(&wq->wq_wip[i].wip_cv, NULL); /* Omitted on Solaris!?! */
+#endif /* __APPLE__ */
+		wq->wq_wip[i].wip_batchid = wq->wq_next_batchid++;
+	}
+
+	pthread_mutex_init(&wq->wq_queue_lock, NULL);
+	wq->wq_queue = fifo_new();
+	pthread_cond_init(&wq->wq_work_avail, NULL);
+	pthread_cond_init(&wq->wq_work_removed, NULL);
+	wq->wq_ninqueue = nfiles;
+	wq->wq_nextpownum = 0;
+
+	pthread_mutex_init(&wq->wq_donequeue_lock, NULL);
+	wq->wq_donequeue = fifo_new();
+	wq->wq_lastdonebatch = -1;
+
+	pthread_cond_init(&wq->wq_done_cv, NULL);
+
+	pthread_cond_init(&wq->wq_alldone_cv, NULL);
+	wq->wq_alldone = 0;
+
+	barrier_init(&wq->wq_bar1, wq->wq_nthreads);
+	barrier_init(&wq->wq_bar2, wq->wq_nthreads);
+
+	wq->wq_nomorefiles = 0;
+}
+
+static void
+start_threads(workqueue_t *wq)
+{
+	sigset_t sets;
+	int i;
+
+	sigemptyset(&sets);
+	sigaddset(&sets, SIGINT);
+	sigaddset(&sets, SIGQUIT);
+	sigaddset(&sets, SIGTERM);
+	pthread_sigmask(SIG_BLOCK, &sets, NULL);
+
+	for (i = 0; i < wq->wq_nthreads; i++) {
+		pthread_create(&wq->wq_thread[i], NULL,
+		    (void *(*)(void *))worker_thread, wq);
+	}
+
+	sigset(SIGINT, handle_sig);
+	sigset(SIGQUIT, handle_sig);
+	sigset(SIGTERM, handle_sig);
+	pthread_sigmask(SIG_UNBLOCK, &sets, NULL);
+}
+
+static void
+join_threads(workqueue_t *wq)
+{
+	int i;
+
+	for (i = 0; i < wq->wq_nthreads; i++) {
+		pthread_join(wq->wq_thread[i], NULL);
+	}
+}
+
+/*
+ * Core work queue structure; passed to worker threads on thread creation
+ * as the main point of coordination.  Allocate as a static structure; we
+ * could have put this into a local variable in main, but passing a pointer
+ * into your stack to another thread is fragile at best and leads to some
+ * hard-to-debug failure modes.
+ */
+static workqueue_t wq;
+
+/*
+ * Entry points for ctfconvert, ctfmerge
+ */
+void
+ctfmerge_prepare(int nielems)
+{
+	/* Prepare for the merge */
+	wq_init(&wq, nielems);
+	start_threads(&wq);
+}
+
+int
+ctfmerge_add_td(tdata_t *td, const char *name)
+{
+	return (worker_add_td(&wq, td, name));
+}
+
+tdata_t *
+ctfmerge_done(void)
+{
+	tdata_t *mstrtd = NULL;
+
+	pthread_mutex_lock(&wq.wq_queue_lock);
+	wq.wq_nomorefiles = 1;
+	pthread_cond_signal(&wq.wq_work_avail);
+	pthread_mutex_unlock(&wq.wq_queue_lock);
+
+	pthread_mutex_lock(&wq.wq_queue_lock);
+	while (wq.wq_alldone == 0)
+		pthread_cond_wait(&wq.wq_alldone_cv, &wq.wq_queue_lock);
+	pthread_mutex_unlock(&wq.wq_queue_lock);
+
+	join_threads(&wq);
+
+	/*
+	 * All requested files have been merged, with the resulting tree in
+	 * mstrtd.
+	 */
+	assert(fifo_len(wq.wq_queue) == 1);
+	mstrtd = fifo_remove(wq.wq_queue);
+
+	return (mstrtd);
+}

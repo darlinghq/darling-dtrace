@@ -24,8 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)tst.resize1.d	1.1	06/08/28 SMI"
-
 /*
  * ASSERTION:
  *	Checks that setting "bufresize" to "auto" will cause buffer
@@ -53,10 +51,6 @@
  */
 
 #pragma D option bufresize=auto
-
-#ifdef __SUNW_D_64
-#pragma D option bufsize=100t
-#endif
 
 BEGIN
 {
