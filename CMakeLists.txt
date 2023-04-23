@@ -174,6 +174,7 @@ target_link_libraries(libdtrace system cxx CoreFoundation CoreSymbolication)
 set_property(TARGET libdtrace APPEND_STRING PROPERTY COMPILE_DEFINITIONS
 	"_INT64_TYPE -D_LONGLONG_TYPE -D_ILP32 -DNS_BLOCK_ASSERTIONS -DNDEBUG"
 )
+set_target_properties(libdtrace PROPERTIES PREFIX "")
 target_link_libraries(libdtrace dwarf elf ctf CoreFoundation CoreSymbolication)
 install(TARGETS libdtrace DESTINATION libexec/darling/usr/lib)
 
