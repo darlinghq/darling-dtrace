@@ -24,8 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)tst.raise1.c	1.1	06/08/28 SMI"
-
 #include <unistd.h>
 #include <signal.h>
 
@@ -35,13 +33,14 @@ main(int argc, char **argv)
 	sigset_t ss;
 
 	(void) sigemptyset(&ss);
-	(void) sigaddset(&ss, SIGINT);
+	(void) sigaddset(&ss, SIGUSR1);
 	(void) sigprocmask(SIG_BLOCK, &ss, NULL);
 
 	do {
 		(void) geteuid();
+		usleep(1000);
 		(void) sigpending(&ss);
-	} while (!sigismember(&ss, SIGINT));
+	} while (!sigismember(&ss, SIGUSR1));
 
 	return (0);
 }

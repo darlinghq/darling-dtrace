@@ -27,8 +27,6 @@
 #ifndef _ASSOC_H
 #define	_ASSOC_H
 
-#pragma ident	"@(#)alist.h	1.3	05/06/08 SMI"
-
 /*
  * Create, manage, and destroy association lists.  alists are arrays with
  * arbitrary index types.
@@ -38,11 +36,12 @@
 extern "C" {
 #endif
 
+#define	ALIST_HASH_SIZE	128
+
 typedef struct alist alist_t;
 
-alist_t *alist_new(void (*)(void *), void (*)(void *));
-alist_t *alist_xnew(int, void (*)(void *), void (*)(void *),
-    int (*)(int, void *), int (*)(void *, void *));
+alist_t *alist_new(unsigned size);
+void alist_clear(alist_t *);
 void alist_free(alist_t *);
 void alist_add(alist_t *, void *, void *);
 int alist_find(alist_t *, void *, void **);

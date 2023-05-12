@@ -23,8 +23,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)iidesc.c	1.6	06/08/22 SMI"
-
 /*
  * Routines for manipulating iidesc_t structures
  */
@@ -44,13 +42,12 @@ typedef struct iidesc_find {
 } iidesc_find_t;
 
 iidesc_t *
-iidesc_new(char *name)
+iidesc_new(atom_t *name)
 {
 	iidesc_t *ii;
 
 	ii = xcalloc(sizeof (iidesc_t));
-	if (name)
-		ii->ii_name = xstrdup(name);
+	ii->ii_name = name;
 
 	return (ii);
 }
@@ -59,12 +56,7 @@ int
 iidesc_hash(int nbuckets, void *arg)
 {
 	iidesc_t *ii = arg;
-	int h = 0;
-
-	if (ii->ii_name)
-		return (hash_name(nbuckets, ii->ii_name));
-
-	return (h);
+	return atom_hash(ii->ii_name) % nbuckets;
 }
 
 static int
@@ -73,7 +65,7 @@ iidesc_cmp(iidesc_t *src, iidesc_find_t *find)
 	iidesc_t *tgt = find->iif_tgt;
 
 	if (src->ii_type != tgt->ii_type ||
-	    !streq(src->ii_name, tgt->ii_name))
+	    src->ii_name != tgt->ii_name)
 		return (0);
 
 	find->iif_ret = src;
@@ -112,7 +104,7 @@ iter_iidescs_by_name(tdata_t *td, const char *name,
 {
 	iidesc_t tmpdesc;
 	bzero(&tmpdesc, sizeof (iidesc_t));
-	tmpdesc.ii_name = (char *)name;
+	tmpdesc.ii_name = atom_get(name);
 	(void) hash_match(td->td_iihash, &tmpdesc, (int (*)())func, data);
 }
 
@@ -124,8 +116,8 @@ iidesc_dup(iidesc_t *src)
 	tgt = xmalloc(sizeof (iidesc_t));
 	bcopy(src, tgt, sizeof (iidesc_t));
 
-	tgt->ii_name = src->ii_name ? xstrdup(src->ii_name) : NULL;
-	tgt->ii_owner = src->ii_owner ? xstrdup(src->ii_owner) : NULL;
+	tgt->ii_name = src->ii_name;
+	tgt->ii_owner = src->ii_owner;
 
 	if (tgt->ii_nargs) {
 		tgt->ii_args = xmalloc(sizeof (tdesc_t *) * tgt->ii_nargs);
@@ -140,11 +132,9 @@ iidesc_t *
 iidesc_dup_rename(iidesc_t *src, char const *name, char const *owner)
 {
 	iidesc_t *tgt = iidesc_dup(src);
-	free(tgt->ii_name);
-	free(tgt->ii_owner);
 
-	tgt->ii_name = name ? xstrdup(name) : NULL;
-	tgt->ii_owner = owner ? xstrdup(owner) : NULL;
+	tgt->ii_name = atom_get(name);
+	tgt->ii_owner = atom_get(owner);
 
 	return (tgt);
 }
@@ -153,12 +143,8 @@ iidesc_dup_rename(iidesc_t *src, char const *name, char const *owner)
 void
 iidesc_free(iidesc_t *idp, void *private)
 {
-	if (idp->ii_name)
-		free(idp->ii_name);
 	if (idp->ii_nargs)
 		free(idp->ii_args);
-	if (idp->ii_owner)
-		free(idp->ii_owner);
 	free(idp);
 }
 
@@ -166,7 +152,7 @@ int
 iidesc_dump(iidesc_t *ii)
 {
 	printf("type: %d  name %s\n", ii->ii_type,
-	    (ii->ii_name ? ii->ii_name : "(anon)"));
+	    atom_pretty(ii->ii_name, "(anon)"));
 
 	return (0);
 }

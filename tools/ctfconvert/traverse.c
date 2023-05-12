@@ -23,8 +23,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)traverse.c	1.7	06/04/20 SMI"
-
 /*
  * Routines used to traverse tdesc trees, invoking user-supplied callbacks
  * as the tree is traversed.
@@ -57,6 +55,13 @@ static int
 tdtrav_plain(tdesc_t *this, tdtrav_data_t *tdtd)
 {
 	return (tdtraverse(this->t_tdesc, &this->t_tdesc, tdtd));
+}
+
+static int
+tdtrav_ptrauth(tdesc_t *this, tdtrav_data_t *tdtd)
+{
+	return (tdtraverse(this->t_ptrauth->pta_type,
+	    &this->t_ptrauth->pta_type, tdtd));
 }
 
 static int
@@ -127,7 +132,8 @@ tdtrav_cb_f tdnops[] = {
 	NULL,			/* typedef_unres */
 	NULL,			/* volatile */
 	NULL,			/* const */
-	NULL			/* restrict */
+	NULL,			/* restrict */
+	NULL			/* ptrauth */
 };
 
 int (*tddescenders[])(tdesc_t *, tdtrav_data_t *) = {
@@ -144,7 +150,8 @@ int (*tddescenders[])(tdesc_t *, tdtrav_data_t *) = {
 	NULL,			/* typedef_unres */
 	tdtrav_plain,		/* volatile */
 	tdtrav_plain,		/* const */
-	tdtrav_plain		/* restrict */
+	tdtrav_plain,		/* restrict */
+	tdtrav_ptrauth		/* ptrauth */
 };
 
 int

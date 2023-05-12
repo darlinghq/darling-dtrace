@@ -24,8 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)tst.strtok.d	1.1	06/08/28 SMI"
-
 #pragma D option quiet
 #pragma D option statusrate=10ms
 
@@ -129,9 +127,9 @@ BEGIN
 	i = 0;
 }
 
-tick-1ms
+profile-10ms
 /i < end &&
-    (this->result = strtok(command[i].s1, command[i].s2)) != command[i].result/
+    (this->result = strtok(command[i].s1, command[i].s2)) != command[i].result && cpu == 0/
 {
 	printf("strtok(\"%s\", \"%s\") = \"%s\", expected \"%s\"",
 	    command[i].s1, command[i].s2,
@@ -140,8 +138,14 @@ tick-1ms
 	exit(6 + i);
 }
 
-tick-1ms
-/++i == end/
+profile-10ms
+/ cpu == 0 /
+{
+	i++;
+}
+
+profile-10ms
+/i == end && cpu == 0/
 {
 	exit(0);
 }

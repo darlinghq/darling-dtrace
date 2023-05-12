@@ -24,8 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"@(#)tst.raise2.d	1.1	06/08/28 SMI"
-
 /*
  * ASSERTION:
  * 	Positive test for raise
@@ -47,7 +45,7 @@ syscall::geteuid:return
 /pid == $1/
 {
 	trace("raised");
-	raise(SIGINT);
+	raise(SIGUSR1);
 	/*
 	 * Wait no more than half a second for the process to die.
 	 */
@@ -55,6 +53,7 @@ syscall::geteuid:return
 }
 
 syscall::exit:entry
+/pid == $1/
 {
 	exit(0);
 }
