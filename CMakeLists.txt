@@ -25,6 +25,7 @@ include_directories(BEFORE
 
 add_definitions(
 	-Dyydebug=
+	-DPRIVATE
 )
 
 add_darling_static_library(ctf FAT
