@@ -47,6 +47,9 @@
 #include <mach/machine.h>
 #include <sys/sysctl.h>
 #include <pthread.h>
+#ifdef DARLING
+#include <pthread/qos_private.h>
+#endif
 
 #include <IOKit/IOKitLib.h>
 
