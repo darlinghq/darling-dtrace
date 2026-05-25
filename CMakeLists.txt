@@ -4,6 +4,7 @@ add_compile_options(
 	-nostdinc
 	-Wno-shift-op-parentheses
 	-Wno-error=int-conversion
+	-Wno-error=incompatible-pointer-types
 )
 
 include_directories(BEFORE
